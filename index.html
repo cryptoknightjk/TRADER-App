@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crypto TA Secrets TRADER App</title>
+  <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAADSklEQVR42u2WTWhcVRTH/+fe9zKZGZyZEpqSaSyBVA1NxY8obqyJiogb0cWzSigIxS6s6cJV/YCXwU3BRXCpG4UipZOAUaQKRYeGqNV8tAWTfpBIxaI2McmYmTHz5r13/y6aNBCpTeLE1fw2l/e4553D+Z/7vw+oUaPGJshmHU1mNbOOpuuq/zW5SJW/t5HNJEQEvDzoPL+rtfm+ilcemZ78deGB6U/PohcUATdagFp/cleJgNe+fvlVr+Lfq22dD7zg3bqYPIZeF2Njh6zNdGBdQcw6WiQTls4feSc0SDY/8dERALj6RXcxUh+ZFckYAGZLJFhp+9B7j25v69hzZftdLQ9PDI/sbm1r6VyYK345+/vM/M6W5odS2+4o6t3HBiCAYP1S3FaC/n5HAYAViXX45YrWTW9PRSPRIPDNwaZ9HwzlF8p/LBWKVtHzvtpMB25bgLO8GoM4CRpDWEqXAf78y3ev129LRfdNDV09ntrbN7/cUlZ3CJ09BADb+Je0rSPkuThNxQhUnVrKn7BsWz+eOVPO5TqtLTkFIhlDuuqR13IT0VhktDx5/EBQ9mchiBua05WK3/dJX2eqq6vLuC7UFh3DXpKUZDzaXcgX7vct/RzAsWQivmhMeL69Nf2+SMa0tzvVsSmS4rqucl1XkRAAQq5a7vSpl7oXx3vOcvJow+ljHcmZ4Veuc/qNgwDAnGuRFJJCQMibsdXz0Euf7X/mz/GeAV5+cycAzI8c7gmnjg7w2lt3/icf4A2r55VT+1tVyKgH7cUs45fELNb7kbQoqSxVyrGoxny5EkYaE6nS9UrB4K8SZidK+YYHm5JxAFKnU4LAa2Hjb1PeTKMRSUtBX7z7wMeLyzn5jwJWDOfi4ItpW+MpGusbI+FhAYZJ00BAQzAPAIrSZEWsXOCbp03IlGgMKsiTgQnntJJ7lMIJ30daCXcZkUARtu+FH+59ob94yyEUAQlIQiXyotScWGaHAs7A8CdDGRelxtqePXmSoZkUke+NFzRQMB6x8YNopZTC51HbLhEYBpBQGjuU8FsGcoEi59qd/tKGtPkx69T9m12Pjh6yb3VFM+voqlzT7urPhnCNXCvryp4b0776fPPdmtgaNWrUWMvflCWE00iworsAAAAASUVORK5CYII=" />
+  <link rel="stylesheet" href="css/app.css?v=1.0-plan3" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("cts-hub-theme");
+        document.documentElement.setAttribute("data-theme", t === "dark" ? "dark" : "light");
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "light");
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark-wrap">
+          <img class="brand-mark" src="data:image/png;base64,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" width="42" height="42" alt="CryptoKnight" />
+          <span class="app-version" id="appVersion" title="App version">v1.0</span>
+        </div>
+        <div class="brand-text">
+          <strong>Crypto TA Secrets TRADER App</strong>
+          <span class="brand-sub">CryptoKnight Academy</span>
+        </div>
+      </div>
+
+      <nav class="mode-switch" aria-label="Mode">
+        <button type="button" class="mode-btn is-active" data-mode="calculator" id="btnModeCalc">Position Size Calculator</button>
+        <button type="button" class="mode-btn" data-mode="assess" id="btnModeAssess">Assess</button>
+        <button type="button" class="mode-btn" data-mode="journal" id="btnModeJournal">Journal</button>
+        <button type="button" class="mode-btn" data-mode="performance" id="btnModePerformance">Performance</button>
+      </nav>
+
+      <div class="top-actions">
+        <span class="db-status" id="dbStatus">No database</span>
+        <div class="journal-actions">
+          <button type="button" class="btn ghost" id="btnOpenDb" title="Point to a .csv journal anywhere, or import Excel / convert legacy SQLite">Link Existing Journal</button>
+          <button type="button" class="btn ghost" id="btnNewDb" title="Create a new .csv journal in the journals folder">Create New Journal</button>
+        </div>
+        <button type="button" class="btn ghost btn-theme" id="btnThemeToggle" title="Switch to dark mode" aria-label="Switch to dark mode" aria-pressed="false">
+          <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <svg class="theme-icon theme-icon-sun is-hidden" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false" hidden>
+            <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+        </button>
+        <input type="file" id="fileImport" accept=".csv,text/csv" hidden />
+      </div>
+    </header>
+
+    <main>
+      <section id="viewCalculator" class="view is-active" aria-label="Position Size Calculator">
+        <div class="calc-grid">
+          <div class="panel margin-mode-panel">
+            <h2>Underlying margin type</h2>
+            <div class="margin-mode-switch" role="radiogroup" aria-label="Underlying margin type">
+              <label class="margin-mode-btn">
+                <input type="radio" name="marginMode" id="marginModeUsdt" value="usdt" checked />
+                <span>USD-margined (USDT-M)</span>
+              </label>
+              <label class="margin-mode-btn">
+                <input type="radio" name="marginMode" id="marginModeCoin" value="coin" />
+                <span>Coin-margined (Coin-M)</span>
+              </label>
+            </div>
+            <p class="hint" id="marginModeHint">Account size in USDT. Position size from dollar risk ? (entry - stop).</p>
+          </div>
+
+          <div class="panel">
+            <h2>1. Account</h2>
+            <label class="field">
+              <span id="accountSizeLabel">Current Trading Account Net Worth (USDT)</span>
+              <input type="number" id="accountSize" value="" step="any" class="input-yellow" autocomplete="off" />
+            </label>
+          </div>
+
+          <div class="panel">
+            <h2>2. Trade setup</h2>
+            <label class="field">
+              <span>Symbol</span>
+              <input type="text" id="pair" placeholder="e.g. BTC, SUI" class="input-yellow" autocomplete="off" />
+            </label>
+            <div class="field-row field-row-2">
+              <label class="field">
+                <span>Strategy Type</span>
+                <input type="text" id="strategy" list="strategyList" class="input-yellow" placeholder="Select or type your own?" autocomplete="off" />
+                <datalist id="strategyList">
+                  <option value="AVWAP"></option>
+                  <option value="Breakout"></option>
+                  <option value="Highway"></option>
+                  <option value="Prata"></option>
+                  <option value="Slam Dunk"></option>
+                </datalist>
+              </label>
+              <label class="field">
+                <span>Setup Idea (insert Web link)</span>
+                <input type="text" id="setupIdea" placeholder="https://www.tradingview.com/?" class="input-yellow" autocomplete="off" />
+              </label>
+            </div>
+            <div class="strategy-chips" id="strategyChips">
+              <button type="button" class="strategy-chip" data-strategy="AVWAP">AVWAP</button>
+              <button type="button" class="strategy-chip" data-strategy="Breakout">Breakout</button>
+              <button type="button" class="strategy-chip" data-strategy="Highway">Highway</button>
+              <button type="button" class="strategy-chip" data-strategy="Prata">Prata</button>
+              <button type="button" class="strategy-chip" data-strategy="Slam Dunk">Slam Dunk</button>
+            </div>
+            <div class="strategy-plan" id="strategyPlanBox">
+              <strong>Trade plan</strong>
+              <p><span>Entry</span> <em data-plan-line="entry">Pick a strategy above</em></p>
+              <p class="plan-line-sl"><span>Stop Loss</span> <em data-plan-line="sl">—</em></p>
+              <p class="plan-line-tp"><span>Take Profit</span> <em data-plan-line="tp">—</em></p>
+            </div>
+            <div class="field-row field-row-3">
+              <label class="field">
+                <span>Entry Price (limit order)</span>
+                <div class="field-plan-row">
+                  <input type="number" id="entryPrice" value="" step="any" class="input-yellow" autocomplete="off" />
+                  <em class="plan-hint" data-plan="entry"></em>
+                </div>
+              </label>
+              <label class="field">
+                <span class="label-sl">Stop Loss</span>
+                <div class="field-plan-row">
+                  <input type="number" id="stopLoss" value="" step="any" class="input-yellow" autocomplete="off" />
+                  <em class="plan-hint plan-hint-sl" data-plan="sl"></em>
+                </div>
+              </label>
+              <label class="field">
+                <span class="label-tp">Take Profit</span>
+                <div class="field-plan-row">
+                  <input type="number" id="takeProfit" value="" step="any" class="input-yellow" autocomplete="off" />
+                  <em class="plan-hint plan-hint-tp" data-plan="tp"></em>
+                </div>
+              </label>
+            </div>
+            <div class="metrics">
+              <div class="metric"><span>R multiple <em class="rr-hint">(at least 1.5)</em></span><strong id="outRMultiple">?</strong></div>
+              <div class="metric"><span>Direction</span><strong id="outDirection" class="pill">?</strong></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>3. Risk management</h2>
+            <div class="quality-row">
+              <label class="field">
+                <span>Trade Setup Rating</span>
+                <select id="quality" class="input-yellow">
+                  <option value="A+">A+</option>
+                  <option value="A">A</option>
+                  <option value="B" selected>B</option>
+                  <option value="C">C (no trade)</option>
+                </select>
+              </label>
+              <button type="button" class="btn ghost" id="btnGoAssess" title="Grade this setup on the Assess tab">Assess</button>
+            </div>
+            <div class="metrics">
+              <div class="metric"><span>% Equity to Risk</span><strong id="outRiskPct">?</strong></div>
+              <div class="metric"><span id="riskAmountLabel">Dollar Risk (USD)</span><strong id="outDollarRisk">?</strong></div>
+            </div>
+          </div>
+
+          <div class="panel accent">
+            <h2>4. Trade parameters (to execute)</h2>
+            <div class="metrics outputs field-row-2">
+              <div class="metric"><span>Leverage multiplier</span><strong id="outLeverage" class="out-orange">?</strong></div>
+              <div class="metric"><span>% Equity to Trade (for slider)</span><strong id="outEquityTrade" class="out-orange">?</strong></div>
+            </div>
+            <div class="metrics outputs">
+              <div class="metric">
+                <span>Entry Price (limit order)</span>
+                <div class="field-plan-row">
+                  <strong id="outEntryPrice" class="out-orange">?</strong>
+                  <em class="plan-hint" data-plan="entry"></em>
+                </div>
+              </div>
+            </div>
+            <div class="metrics outputs field-row-2">
+              <div class="metric"><span>Size to Trade (number of tokens)</span><strong id="outSize" class="out-orange">?</strong></div>
+              <div class="metric"><span>Value to Trade (USDT)</span><strong id="outValue" class="out-orange">?</strong></div>
+            </div>
+            <div class="metrics outputs field-row-2">
+              <div class="metric">
+                <span class="label-tp">Take Profit</span>
+                <div class="field-plan-row">
+                  <strong id="outTakeProfit" class="out-tp">?</strong>
+                  <em class="plan-hint plan-hint-tp" data-plan="tp"></em>
+                </div>
+              </div>
+              <div class="metric"><span>Est. PnL at TP</span><strong id="outPnlTp">?</strong></div>
+            </div>
+            <div class="metrics outputs field-row-2">
+              <div class="metric">
+                <span class="label-sl">Stop Loss</span>
+                <div class="field-plan-row">
+                  <strong id="outStopLoss" class="out-sl">?</strong>
+                  <em class="plan-hint plan-hint-sl" data-plan="sl"></em>
+                </div>
+              </div>
+              <div class="metric"><span>Est. PnL at SL</span><strong id="outPnlSl">?</strong></div>
+            </div>
+          </div>
+
+          <div class="log-trade-bar" id="logTradeBar">
+            <button type="button" class="btn primary btn-log-trade" id="btnLogTrade">Log Trade into Journal</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="viewAssess" class="view" aria-label="Trade setup assessment" hidden>
+        <div class="rating-layout">
+          <aside class="rating-summary panel accent">
+            <h2>Trade Setup Quality</h2>
+            <p class="hint">Pick Supporting, Neutral, or Opposing for each criterion. The grade updates live and applies to the Position Size Calculator automatically.</p>
+            <div class="grade-pills" aria-hidden="true">
+              <div class="grade-pills-row">
+                <span class="grade-pill" data-grade="A+">A+ =9 supporting</span>
+                <span class="grade-pill" data-grade="A">A =6 supporting</span>
+              </div>
+              <div class="grade-pills-row">
+                <span class="grade-pill" data-grade="B">B =1 opposing</span>
+                <span class="grade-pill" data-grade="C">C ≥1 opposing</span>
+              </div>
+            </div>
+            <div class="rating-result">
+              <div class="metric">
+                <span>Current rating</span>
+                <strong id="ratingGrade" class="rating-grade-value">?</strong>
+              </div>
+              <div class="metric">
+                <span>% Equity to Risk</span>
+                <strong id="ratingRisk">?</strong>
+              </div>
+            </div>
+            <p class="rating-counts" id="ratingCounts">Supporting 0 ? Opposing 0 ? Neutral 0</p>
+            <p class="rating-reason" id="ratingReason">Select Supporting, Neutral, or Opposing for each criterion.</p>
+            <div class="rating-actions">
+              <button type="button" class="btn primary" id="btnOpenCalculatorFromAssess">Return to Position Size Calculator</button>
+              <button type="button" class="btn ghost" id="btnResetRating">Reset</button>
+            </div>
+          </aside>
+          <div class="rating-checklist panel">
+            <h2>Criteria checklist</h2>
+            <div id="ratingCriteria"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="viewJournal" class="view" aria-label="Journal" hidden>
+        <div class="journal-toolbar">
+          <label class="field inline">
+            <span>Search pair</span>
+            <input type="search" id="filterPair" placeholder="All pairs" />
+          </label>
+          <label class="field inline">
+            <span>Time frame</span>
+            <select id="filterTimeframe">
+              <option value="all" selected>All</option>
+              <option value="7d">7D</option>
+              <option value="mtd">Month to Date</option>
+              <option value="ytd">Year to Date</option>
+              <option value="365d">365 days</option>
+            </select>
+          </label>
+          <button type="button" class="btn ghost" id="btnRefreshJournal">Refresh</button>
+        </div>
+        <div class="journal-section-head">
+          <h2 class="view-title">Trade Log</h2>
+        </div>
+        <div class="table-wrap">
+          <table id="journalTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Position</th>
+                <th>Entry Date</th>
+                <th>Pair</th>
+                <th>Direction</th>
+                <th>Entry</th>
+                <th>SL</th>
+                <th>TP</th>
+                <th>R:R</th>
+                <th>Strategy</th>
+                <th class="col-setup-idea">Setup Idea</th>
+                <th>Quality</th>
+                <th>Risk %</th>
+                <th>Lev</th>
+                <th>Size %</th>
+                <th>Margin %</th>
+                <th>Exit Reason</th>
+                <th>Exit Date</th>
+                <th>Exit Price</th>
+                <th>W/L</th>
+                <th>Price ?</th>
+                <th>ROE</th>
+                <th class="col-header-stack col-acct-pct" title="Trade Win/Loss">Trade<br>Win/Loss</th>
+                <th class="col-header-stack col-cumul-pct" title="Cumulative Account Change %">Cumulative<br>Account Change %</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="journalBody"></tbody>
+          </table>
+        </div>
+        <p class="hint" id="journalEmpty">No open or closed trades yet. Use the Position Size Calculator and click <strong>Log Trade into Journal</strong>.</p>
+
+        <div class="journal-section-head">
+          <h2 class="view-title">Trades Pending</h2>
+          <p class="hint section-hint">Setups waiting for a fill (not opened).</p>
+        </div>
+        <div class="table-wrap">
+          <table id="parkedTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Position</th>
+                <th>Entry Date</th>
+                <th>Pair</th>
+                <th>Direction</th>
+                <th>Entry</th>
+                <th>SL</th>
+                <th>TP</th>
+                <th>R:R</th>
+                <th>Strategy</th>
+                <th class="col-setup-idea">Setup Idea</th>
+                <th>Quality</th>
+                <th>Risk %</th>
+                <th>Lev</th>
+                <th>Size %</th>
+                <th>Margin %</th>
+                <th>Exit Reason</th>
+                <th>Exit Date</th>
+                <th>Exit Price</th>
+                <th>W/L</th>
+                <th>Price ?</th>
+                <th>ROE</th>
+                <th class="col-header-stack col-acct-pct" title="Trade Win/Loss">Trade<br>Win/Loss</th>
+                <th class="col-header-stack col-cumul-pct" title="Cumulative Account Change %">Cumulative<br>Account Change %</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="parkedBody"></tbody>
+          </table>
+        </div>
+        <p class="hint" id="parkedEmpty">No pending trades.</p>
+
+        <div class="journal-section-head">
+          <h2 class="view-title">Trades cancelled</h2>
+          <p class="hint section-hint">Trades moved out of the journal with Archive Trade Idea.</p>
+        </div>
+        <div class="table-wrap">
+          <table id="cancelledTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Position</th>
+                <th>Entry Date</th>
+                <th>Pair</th>
+                <th>Direction</th>
+                <th>Entry</th>
+                <th>SL</th>
+                <th>TP</th>
+                <th>R:R</th>
+                <th>Strategy</th>
+                <th class="col-setup-idea">Setup Idea</th>
+                <th>Quality</th>
+                <th>Risk %</th>
+                <th>Lev</th>
+                <th>Size %</th>
+                <th>Margin %</th>
+                <th>Exit Reason</th>
+                <th>Exit Date</th>
+                <th>Exit Price</th>
+                <th>W/L</th>
+                <th>Price ?</th>
+                <th>ROE</th>
+                <th class="col-header-stack col-acct-pct" title="Trade Win/Loss">Trade<br>Win/Loss</th>
+                <th class="col-header-stack col-cumul-pct" title="Cumulative Account Change %">Cumulative<br>Account Change %</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="cancelledBody"></tbody>
+          </table>
+        </div>
+        <p class="hint" id="cancelledEmpty">No cancelled trades.</p>
+      </section>
+
+      <section id="viewPerformance" class="view" aria-label="Trade results performance" hidden>
+        <div class="journal-toolbar">
+          <h2 class="view-title">Performance</h2>
+          <button type="button" class="btn ghost" id="btnRefreshPerformance">Refresh</button>
+        </div>
+        <p class="hint" id="performanceEmpty" hidden>No trades yet.</p>
+        <div id="performanceRoot"></div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+  </div>
+
+  <script>
+    (function () {
+      var PLANS = {
+        avwap: { entry: "Limit on the AVWAP", sl: "Beyond last wick through AVWAP", tp: "Next S/R away from AVWAP" },
+        breakout: { entry: "Candle close of the breakout", sl: "1.5 ATR from entry", tp: "Next S/R" },
+        highway: { entry: "Limit at the near rail of the highway", sl: "Outside the entry rail", tp: "Opposite rail of the highway" },
+        prata: { entry: "Limit on retest of the flipped S/R", sl: "Beyond the flip zone", tp: "Next S/R in the flip direction" },
+        "slam dunk": { entry: "At the slam dunk trigger", sl: "15% above entry", tp: "60% down from entry" }
+      };
+      function keyOf(s) { return String(s || "").trim().toLowerCase().replace(/\s+/g, " "); }
+      function paint() {
+        var input = document.getElementById("strategy");
+        var box = document.getElementById("strategyPlanBox");
+        if (!input || !box) return;
+        var name = input.value;
+        var plan = PLANS[keyOf(name)];
+        var entry = plan ? plan.entry : "Pick a strategy above";
+        var sl = plan ? plan.sl : "—";
+        var tp = plan ? plan.tp : "—";
+        var set = function (k, v) {
+          box.querySelectorAll('[data-plan-line="' + k + '"]').forEach(function (el) { el.textContent = v; });
+          document.querySelectorAll('.plan-hint[data-plan="' + k + '"]').forEach(function (el) {
+            el.textContent = plan ? v : "";
+          });
+        };
+        set("entry", entry);
+        set("sl", sl);
+        set("tp", tp);
+        box.classList.toggle("has-plan", !!plan);
+        document.querySelectorAll(".strategy-chip").forEach(function (btn) {
+          btn.classList.toggle("is-active", keyOf(btn.getAttribute("data-strategy")) === keyOf(name));
+        });
+      }
+      document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".strategy-chip");
+        if (!btn) return;
+        var input = document.getElementById("strategy");
+        if (!input) return;
+        input.value = btn.getAttribute("data-strategy") || "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        paint();
+      });
+      document.addEventListener("input", function (e) {
+        if (e.target && e.target.id === "strategy") paint();
+      });
+      document.addEventListener("change", function (e) {
+        if (e.target && e.target.id === "strategy") paint();
+      });
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", paint);
+      else paint();
+    })();
+  </script>
+  <script type="module" src="js/app.js?v=1.0-plan3"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Built desktop app (recreate with build_local_exe.py / build_ship.py)
+TRADER_App.exe
+TRADER_App.lnk
+_internal/
+_exe_build/
+_ship_staging/
+
+# Local trade journals (keep on machine only)
+journals/*.csv
+!journals/.gitkeep
+
+# Python / OS junk
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
