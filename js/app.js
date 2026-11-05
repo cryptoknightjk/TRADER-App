@@ -46,7 +46,29 @@ function toast(msg, isError = false) {
   toastEl.textContent = msg;
   toastEl.classList.toggle("error", isError);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toastEl.hidden = true; }, 3600);
+  toastTimer = setTimeout(() => { toastEl.hidden = true; }, isError ? 8000 : 3600);
+}
+
+async function showFsHelp() {
+  let brave = false;
+  try {
+    brave = !!(navigator.brave && await navigator.brave.isBrave());
+  } catch {
+    brave = false;
+  }
+  const banner = document.getElementById("fsBanner");
+  const text = document.getElementById("fsBannerText");
+  let message;
+  if (!window.isSecureContext) {
+    message = "Open this app at https://cryptoknightjk.github.io/TRADER-App/ (not as a downloaded file). Then use Chrome, or Brave with local folders enabled.";
+  } else if (brave) {
+    message = "Brave blocks local folders until you turn the feature on. Copy this into the address bar: brave://flags/#file-system-access-api — set File System Access API to Enabled, relaunch Brave, then reload this page.";
+  } else {
+    message = "Local folder mapping needs Google Chrome, or Brave with File System Access API enabled (brave://flags/#file-system-access-api).";
+  }
+  if (text) text.textContent = message;
+  if (banner) banner.hidden = false;
+  toast(message, true);
 }
 
 function setDbStatus(name, mode) {
@@ -207,7 +229,7 @@ async function boot() {
   document.getElementById("btnNewDb").addEventListener("click", async () => {
     try {
       if (!isFsSupported()) {
-        toast("Use the latest Google Chrome or Brave, and open the https link.", true);
+        await showFsHelp();
         return;
       }
       if (!hasMappedDirectory()) {
@@ -237,7 +259,7 @@ async function boot() {
   document.getElementById("btnOpenDb").addEventListener("click", async () => {
     try {
       if (!isFsSupported()) {
-        toast("Use the latest Google Chrome or Brave, and open the https link.", true);
+        await showFsHelp();
         return;
       }
       const result = await openDatabaseWithFs();
@@ -258,7 +280,7 @@ async function boot() {
   document.getElementById("btnChangeDb")?.addEventListener("click", async () => {
     try {
       if (!isFsSupported()) {
-        toast("Use the latest Google Chrome or Brave, and open the https link.", true);
+        await showFsHelp();
         return;
       }
       const result = await changeJournalLocation();
@@ -293,7 +315,7 @@ async function boot() {
 
   if (!isFsSupported()) {
     setDbStatus(null);
-    toast("Use the latest Google Chrome or Brave. Open https://cryptoknightjk.github.io/TRADER-App/", true);
+    await showFsHelp();
     return;
   }
 

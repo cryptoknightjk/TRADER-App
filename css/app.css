@@ -166,6 +166,21 @@ html:has(#viewJournal:not([hidden])) {
   z-index: 40;
 }
 
+.fs-banner {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  background: var(--yellow);
+  color: var(--navy);
+}
+
+.fs-banner p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
 .brand {
   display: flex;
   align-items: center;

@@ -1,9 +1,16 @@
 Crypto TA Secrets TRADER App (web)
 =================================
 
-Open in Google Chrome or Brave:
+Open in Google Chrome, or in Brave after enabling local folders:
 
   https://cryptoknightjk.github.io/TRADER-App/
+
+Brave only
+----------
+  Brave hides the folder picker until you enable it:
+  1. Paste brave://flags/#file-system-access-api into the address bar
+  2. Set File System Access API to Enabled
+  3. Relaunch Brave and reload the app
 
 No install. Your journal stays as a local CSV on your computer.
 

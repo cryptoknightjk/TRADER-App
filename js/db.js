@@ -50,9 +50,7 @@ export const CSV_COLUMNS = [
 export const BUNDLED_JOURNAL_FILE = "default_journal.csv";
 
 function supportsFsAccess() {
-  return typeof window.showOpenFilePicker === "function"
-    && typeof window.showSaveFilePicker === "function"
-    && typeof window.showDirectoryPicker === "function";
+  return typeof window.showDirectoryPicker === "function";
 }
 
 function idbOpen() {
