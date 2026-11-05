@@ -5,7 +5,8 @@
  * IndexedDB stores sticky File System Access handles (folder + file mapping)
  * so the same journal reopens until the user redirects manually.
  *
- * Requires Chromium (Chrome / Edge) with File System Access API.
+ * Chrome and Brave (File System Access API). One folder picker per click —
+ * a second native dialog, or a prompt before the picker, is blocked in Brave.
  */
 
 const IDB_NAME = "cts-trader-fs-map";
@@ -102,14 +103,20 @@ async function idbDelete(key) {
   idb.close();
 }
 
-async function ensurePermission(handle, mode = "readwrite") {
-  if (!handle?.queryPermission) return false;
-  const opts = { mode };
-  if ((await handle.queryPermission(opts)) === "granted") return true;
-  if (handle.requestPermission && (await handle.requestPermission(opts)) === "granted") {
-    return true;
+/** Granted check only. requestPermission outside a click throws in Brave. */
+async function hasWriteAccess(handle) {
+  if (!handle?.queryPermission) return true;
+  try {
+    return (await handle.queryPermission({ mode: "readwrite" })) === "granted";
+  } catch {
+    return false;
   }
-  return false;
+}
+
+function abortError(message = "Open cancelled") {
+  const err = new Error(message);
+  err.name = "AbortError";
+  return err;
 }
 
 function csvEscape(value) {
@@ -284,10 +291,11 @@ async function persistMapping() {
 }
 
 function requireFs() {
+  if (!window.isSecureContext) {
+    throw new Error("Open the app from the https link (Chrome or Brave). A downloaded file:// page cannot map a local folder.");
+  }
   if (!supportsFsAccess()) {
-    throw new Error(
-      "This browser cannot map a local folder. Use Chrome or Edge, and open the app over http://localhost (not a raw file:// page).",
-    );
+    throw new Error("Use the latest Google Chrome or Brave. This page needs the local folder picker those browsers provide.");
   }
 }
 
@@ -302,26 +310,36 @@ function normalizeCsvName(suggestedName) {
   return fileName;
 }
 
-async function pickDirectory() {
-  requireFs();
-  const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-  const allowed = await ensurePermission(handle, "readwrite");
-  if (!allowed) throw new Error("Permission denied for the journal folder.");
-  return handle;
+async function listCsvNames(directory) {
+  const names = [];
+  for await (const [name, handle] of directory.entries()) {
+    if (handle.kind === "file" && /\.csv$/i.test(name)) names.push(name);
+  }
+  names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  return names;
 }
 
-async function pickCsvFile() {
+/** Must be the first await in a click handler (Chrome and Brave). */
+async function pickDirectory() {
   requireFs();
-  const [handle] = await window.showOpenFilePicker({
-    multiple: false,
-    types: [{
-      description: "Trading journal (CSV)",
-      accept: { "text/csv": [".csv"], "text/plain": [".csv"] },
-    }],
+  return window.showDirectoryPicker({
+    id: "cts-trader-journal",
+    mode: "readwrite",
   });
-  const allowed = await ensurePermission(handle, "readwrite");
-  if (!allowed) throw new Error("Permission denied for the journal file.");
-  return handle;
+}
+
+function chooseCsvName(dirName, names) {
+  if (names.length === 1) return names[0];
+  const typed = window.prompt(
+    `CSV files in “${dirName}”:\n\n${names.join("\n")}\n\nType the file name to use:`,
+    names[0],
+  );
+  if (typed === null) throw abortError();
+  const wanted = typed.trim().toLowerCase();
+  const match = names.find((name) => name.toLowerCase() === wanted)
+    || names.find((name) => name.toLowerCase() === `${wanted}.csv`);
+  if (!match) throw new Error(`“${typed.trim()}” is not a CSV in that folder.`);
+  return match;
 }
 
 async function bindHandles(nextFile, nextDir) {
@@ -362,7 +380,11 @@ export function getDirName() {
 }
 
 export function isFsSupported() {
-  return supportsFsAccess();
+  return window.isSecureContext && supportsFsAccess();
+}
+
+export function hasMappedDirectory() {
+  return !!dirHandle;
 }
 
 export async function clearJournalMapping() {
@@ -393,8 +415,7 @@ export async function tryRestoreLastDb() {
     return { ok: false, reason: "none", preference: savedMeta || null };
   }
 
-  const allowed = await ensurePermission(savedFile, "readwrite");
-  if (!allowed) {
+  if (!(await hasWriteAccess(savedFile))) {
     return {
       ok: false,
       reason: "permission",
@@ -408,10 +429,7 @@ export async function tryRestoreLastDb() {
     openFromCsvText(await file.text());
     fileHandle = savedFile;
     dirHandle = null;
-    if (savedDir) {
-      const dirOk = await ensurePermission(savedDir, "readwrite");
-      if (dirOk) dirHandle = savedDir;
-    }
+    if (savedDir && await hasWriteAccess(savedDir)) dirHandle = savedDir;
     meta = {
       name: savedFile.name,
       dirName: dirHandle?.name || savedMeta?.dirName || null,
@@ -436,15 +454,23 @@ export async function tryRestoreLastDb() {
 }
 
 /**
- * Map a local folder + an existing CSV inside the user's workflow.
- * 1) Choose journal folder  2) Choose CSV file
+ * Map a local folder. The CSV is chosen inside that folder (no second file dialog).
+ * Call this directly from a click so Chrome and Brave still have the user gesture.
  */
 export async function openDatabaseWithFs() {
-  requireFs();
-
   const nextDir = await pickDirectory();
-  const nextFile = await pickCsvFile();
-
+  const names = await listCsvNames(nextDir);
+  if (!names.length) {
+    fileHandle = null;
+    trades = null;
+    nextId = 1;
+    dirHandle = nextDir;
+    meta = { name: null, dirName: nextDir.name, mode: "file" };
+    await persistMapping();
+    throw new Error(`No CSV in “${nextDir.name}”. Click Create New Journal to add one in that folder.`);
+  }
+  const fileName = chooseCsvName(nextDir.name, names);
+  const nextFile = await nextDir.getFileHandle(fileName);
   const file = await nextFile.getFile();
   openFromCsvText(await file.text());
   await bindHandles(nextFile, nextDir);
@@ -457,6 +483,19 @@ export async function openDatabaseWithFs() {
   };
 }
 
+/** Folder picker only. Must run before any confirm/prompt (Brave). */
+export async function chooseJournalFolder() {
+  const nextDir = await pickDirectory();
+  dirHandle = nextDir;
+  meta = {
+    name: fileHandle?.name || null,
+    dirName: nextDir.name,
+    mode: "file",
+  };
+  await persistMapping();
+  return nextDir.name;
+}
+
 /**
  * Create a new CSV in a mapped folder (picks folder first if needed).
  */
@@ -464,12 +503,9 @@ export async function newDatabase({ suggestedName = "My Trading Journal.csv" } =
   requireFs();
 
   const fileName = normalizeCsvName(suggestedName);
-  let nextDir = dirHandle;
+  const nextDir = dirHandle;
   if (!nextDir) {
-    nextDir = await pickDirectory();
-  } else {
-    const ok = await ensurePermission(nextDir, "readwrite");
-    if (!ok) nextDir = await pickDirectory();
+    throw new Error("Choose a folder first.");
   }
 
   let existing = false;
@@ -504,10 +540,9 @@ export async function newDatabase({ suggestedName = "My Trading Journal.csv" } =
 }
 
 /**
- * Manual redirect: clear sticky mapping, then link folder + CSV again.
+ * Manual redirect. Picker runs first so a cancel leaves the old mapping in place.
  */
 export async function changeJournalLocation() {
-  await clearJournalMapping();
   return openDatabaseWithFs();
 }
 
@@ -517,14 +552,14 @@ export async function changeJournalLocation() {
  */
 export async function importFromFile(file) {
   if (!file) throw new Error("No file selected.");
-  requireFs();
+  if (!dirHandle) {
+    throw new Error("Link a folder first (Link Existing Journal), then import the CSV into it.");
+  }
   openFromCsvText(await file.text());
-
-  const nextDir = await pickDirectory();
   const fileName = normalizeCsvName(file.name || "imported.csv");
-  const nextFile = await nextDir.getFileHandle(fileName, { create: true });
+  const nextFile = await dirHandle.getFileHandle(fileName, { create: true });
   await writeTextToHandle(nextFile, currentCsvText());
-  await bindHandles(nextFile, nextDir);
+  await bindHandles(nextFile, dirHandle);
 
   return {
     name: meta.name,
@@ -553,11 +588,14 @@ export async function persist() {
   if (!fileHandle || typeof fileHandle.createWritable !== "function") {
     throw new Error("No local journal file mapped. Link or create a journal first.");
   }
-  const allowed = await ensurePermission(fileHandle, "readwrite");
-  if (!allowed) {
-    throw new Error("Permission lost for the journal file. Use Change Journal Location to re-link.");
+  try {
+    await writeTextToHandle(fileHandle, currentCsvText());
+  } catch (err) {
+    if (err?.name === "NotAllowedError") {
+      throw new Error("Permission lost for the journal file. Click Change Location and pick the folder again.");
+    }
+    throw err;
   }
-  await writeTextToHandle(fileHandle, currentCsvText());
   await persistMapping();
 }
 

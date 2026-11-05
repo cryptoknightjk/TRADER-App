@@ -1,7 +1,7 @@
 Crypto TA Secrets TRADER App (web)
 =================================
 
-Open in Chrome or Edge:
+Open in Google Chrome or Brave:
 
   https://cryptoknightjk.github.io/TRADER-App/
 

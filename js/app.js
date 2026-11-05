@@ -4,9 +4,11 @@ import {
   tryRestoreLastDb,
   newDatabase,
   openDatabaseWithFs,
+  chooseJournalFolder,
   changeJournalLocation,
   importFromFile,
   hasDb,
+  hasMappedDirectory,
   getDbName,
   getNativePath,
   getDirName,
@@ -205,8 +207,11 @@ async function boot() {
   document.getElementById("btnNewDb").addEventListener("click", async () => {
     try {
       if (!isFsSupported()) {
-        toast("Use Chrome or Edge, and open via http://localhost (see README).", true);
+        toast("Use the latest Google Chrome or Brave, and open the https link.", true);
         return;
+      }
+      if (!hasMappedDirectory()) {
+        await chooseJournalFolder();
       }
       if (hasDb() && !confirm("Create a new journal CSV in your mapped folder? The current file stays on disk; this app will switch to the new one.")) {
         return;
@@ -232,7 +237,7 @@ async function boot() {
   document.getElementById("btnOpenDb").addEventListener("click", async () => {
     try {
       if (!isFsSupported()) {
-        toast("Use Chrome or Edge, and open via http://localhost (see README).", true);
+        toast("Use the latest Google Chrome or Brave, and open the https link.", true);
         return;
       }
       const result = await openDatabaseWithFs();
@@ -253,10 +258,7 @@ async function boot() {
   document.getElementById("btnChangeDb")?.addEventListener("click", async () => {
     try {
       if (!isFsSupported()) {
-        toast("Use Chrome or Edge, and open via http://localhost (see README).", true);
-        return;
-      }
-      if (!confirm("Change journal location?\n\nYou’ll pick a folder and CSV again. Mapping updates; old files are left untouched.")) {
+        toast("Use the latest Google Chrome or Brave, and open the https link.", true);
         return;
       }
       const result = await changeJournalLocation();
@@ -291,7 +293,7 @@ async function boot() {
 
   if (!isFsSupported()) {
     setDbStatus(null);
-    toast("Chrome/Edge required. Open this app via Start Web App.bat (localhost), not as a raw file.", true);
+    toast("Use the latest Google Chrome or Brave. Open https://cryptoknightjk.github.io/TRADER-App/", true);
     return;
   }
 
