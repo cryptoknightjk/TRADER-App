@@ -1,27 +1,31 @@
 /**
- * CSV journal persistence (portable plain-text trades file).
+ * CSV journal persistence for the browser app.
  *
- * - Desktop: journals live in journals/*.csv next to the app.
- * - Browser fallback: IndexedDB snapshot + optional download/import.
- * - Excel import (desktop) converts .xlsx → .csv via native API.
+ * Trade data lives only in a user-picked local CSV file.
+ * IndexedDB stores sticky File System Access handles (folder + file mapping)
+ * so the same journal reopens until the user redirects manually.
+ *
+ * Requires Chromium (Chrome / Edge) with File System Access API.
  */
 
-const IDB_NAME = "cts-trading-hub-csv";
+const IDB_NAME = "cts-trader-fs-map";
 const IDB_VERSION = 1;
 const STORE_HANDLES = "handles";
-const STORE_DATA = "data";
-const HANDLE_KEY = "journal";
-const TEXT_KEY = "csvText";
-const META_KEY = "meta";
-const LS_LAST_DB = "ctsHubLastDbCsv";
+const FILE_KEY = "journalFile";
+const DIR_KEY = "journalDir";
+const META_KEY = "journalMeta";
 
 /** @type {Array<Record<string, any>>|null} */
 let trades = null;
 let nextId = 1;
-/** @type {{ name: string|null, mode: 'idb' | 'file', nativePath?: string|null }} */
-let meta = { name: null, mode: "idb", nativePath: null };
+
+/** @type {FileSystemFileHandle|null} */
 let fileHandle = null;
-let nativePath = null;
+/** @type {FileSystemDirectoryHandle|null} */
+let dirHandle = null;
+
+/** @type {{ name: string|null, dirName: string|null, mode: 'file' }} */
+let meta = { name: null, dirName: null, mode: "file" };
 
 export const CSV_COLUMNS = [
   "id",
@@ -43,85 +47,11 @@ export const CSV_COLUMNS = [
 ];
 
 export const BUNDLED_JOURNAL_FILE = "default_journal.csv";
-export const JOURNAL_DIR = "journals";
-const BUNDLED_JOURNAL_URL = `${JOURNAL_DIR}/${BUNDLED_JOURNAL_FILE}`;
-
-function isNativeDesktop() {
-  return !!(window.pywebview && window.pywebview.api
-    && typeof window.pywebview.api.write_file === "function");
-}
-
-function waitForNativeApi(timeoutMs = 4000) {
-  if (isNativeDesktop()) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const tick = () => {
-      if (isNativeDesktop()) {
-        resolve(true);
-        return;
-      }
-      if (Date.now() - started >= timeoutMs) {
-        resolve(false);
-        return;
-      }
-      setTimeout(tick, 50);
-    };
-    window.addEventListener("pywebviewready", () => {
-      if (isNativeDesktop()) resolve(true);
-    }, { once: true });
-    tick();
-  });
-}
-
-function textToBase64(text) {
-  const bytes = new TextEncoder().encode(text);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
-
-function base64ToText(b64) {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new TextDecoder("utf-8").decode(bytes);
-}
-
-function fileNameFromPath(path) {
-  if (!path) return "journal.csv";
-  const parts = String(path).split(/[/\\]/);
-  return parts[parts.length - 1] || "journal.csv";
-}
 
 function supportsFsAccess() {
-  if (isNativeDesktop()) return false;
   return typeof window.showOpenFilePicker === "function"
-    && typeof window.showSaveFilePicker === "function";
-}
-
-function rememberLastDbPreference() {
-  try {
-    localStorage.setItem(LS_LAST_DB, JSON.stringify({
-      name: meta.name,
-      mode: meta.mode,
-      nativePath: meta.nativePath || nativePath || null,
-      updatedAt: Date.now(),
-    }));
-  } catch {
-    /* ignore */
-  }
-}
-
-export function getLastDbPreference() {
-  try {
-    const raw = localStorage.getItem(LS_LAST_DB);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+    && typeof window.showSaveFilePicker === "function"
+    && typeof window.showDirectoryPicker === "function";
 }
 
 function idbOpen() {
@@ -129,30 +59,31 @@ function idbOpen() {
     const req = indexedDB.open(IDB_NAME, IDB_VERSION);
     req.onupgradeneeded = () => {
       const d = req.result;
-      if (!d.objectStoreNames.contains(STORE_HANDLES)) d.createObjectStore(STORE_HANDLES);
-      if (!d.objectStoreNames.contains(STORE_DATA)) d.createObjectStore(STORE_DATA);
+      if (!d.objectStoreNames.contains(STORE_HANDLES)) {
+        d.createObjectStore(STORE_HANDLES);
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-async function idbPut(store, key, value) {
+async function idbPut(key, value) {
   const idb = await idbOpen();
   await new Promise((resolve, reject) => {
-    const tx = idb.transaction(store, "readwrite");
-    tx.objectStore(store).put(value, key);
+    const tx = idb.transaction(STORE_HANDLES, "readwrite");
+    tx.objectStore(STORE_HANDLES).put(value, key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
   idb.close();
 }
 
-async function idbGet(store, key) {
+async function idbGet(key) {
   const idb = await idbOpen();
   const value = await new Promise((resolve, reject) => {
-    const tx = idb.transaction(store, "readonly");
-    const req = tx.objectStore(store).get(key);
+    const tx = idb.transaction(STORE_HANDLES, "readonly");
+    const req = tx.objectStore(STORE_HANDLES).get(key);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -160,11 +91,11 @@ async function idbGet(store, key) {
   return value;
 }
 
-async function idbDelete(store, key) {
+async function idbDelete(key) {
   const idb = await idbOpen();
   await new Promise((resolve, reject) => {
-    const tx = idb.transaction(store, "readwrite");
-    tx.objectStore(store).delete(key);
+    const tx = idb.transaction(STORE_HANDLES, "readwrite");
+    tx.objectStore(STORE_HANDLES).delete(key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -175,7 +106,9 @@ async function ensurePermission(handle, mode = "readwrite") {
   if (!handle?.queryPermission) return false;
   const opts = { mode };
   if ((await handle.queryPermission(opts)) === "granted") return true;
-  if ((await handle.requestPermission(opts)) === "granted") return true;
+  if (handle.requestPermission && (await handle.requestPermission(opts)) === "granted") {
+    return true;
+  }
   return false;
 }
 
@@ -331,17 +264,75 @@ function currentCsvText() {
   return tradesToCsv(trades || []);
 }
 
-async function saveIdbSnapshot() {
-  if (!trades) return;
-  await idbPut(STORE_DATA, TEXT_KEY, currentCsvText());
-  await idbPut(STORE_DATA, META_KEY, { ...meta });
-  rememberLastDbPreference();
-}
-
 async function writeTextToHandle(handle, text) {
   const writable = await handle.createWritable();
   await writable.write(text);
   await writable.close();
+}
+
+async function persistMapping() {
+  if (fileHandle) await idbPut(FILE_KEY, fileHandle);
+  else await idbDelete(FILE_KEY);
+  if (dirHandle) await idbPut(DIR_KEY, dirHandle);
+  else await idbDelete(DIR_KEY);
+  await idbPut(META_KEY, {
+    name: meta.name,
+    dirName: meta.dirName,
+    mode: "file",
+    updatedAt: Date.now(),
+  });
+}
+
+function requireFs() {
+  if (!supportsFsAccess()) {
+    throw new Error(
+      "This browser cannot map a local folder. Use Chrome or Edge, and open the app over http://localhost (not a raw file:// page).",
+    );
+  }
+}
+
+function normalizeCsvName(suggestedName) {
+  let fileName = (suggestedName || "My Trading Journal.csv").trim();
+  if (!fileName) fileName = "My Trading Journal.csv";
+  fileName = fileName.split(/[/\\]/).pop() || "My Trading Journal.csv";
+  if (!/\.csv$/i.test(fileName)) {
+    fileName = fileName.replace(/\.(xlsx|xls|sqlite|db|sqlite3)$/i, "");
+    fileName = `${fileName}.csv`;
+  }
+  return fileName;
+}
+
+async function pickDirectory() {
+  requireFs();
+  const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+  const allowed = await ensurePermission(handle, "readwrite");
+  if (!allowed) throw new Error("Permission denied for the journal folder.");
+  return handle;
+}
+
+async function pickCsvFile() {
+  requireFs();
+  const [handle] = await window.showOpenFilePicker({
+    multiple: false,
+    types: [{
+      description: "Trading journal (CSV)",
+      accept: { "text/csv": [".csv"], "text/plain": [".csv"] },
+    }],
+  });
+  const allowed = await ensurePermission(handle, "readwrite");
+  if (!allowed) throw new Error("Permission denied for the journal file.");
+  return handle;
+}
+
+async function bindHandles(nextFile, nextDir) {
+  fileHandle = nextFile;
+  dirHandle = nextDir || null;
+  meta = {
+    name: nextFile?.name || null,
+    dirName: nextDir?.name || null,
+    mode: "file",
+  };
+  await persistMapping();
 }
 
 export async function initDbModule() {
@@ -353,297 +344,194 @@ export function hasDb() {
 }
 
 export function getDbName() {
-  return meta.name || fileHandle?.name || (nativePath ? fileNameFromPath(nativePath) : null);
+  return meta.name || fileHandle?.name || null;
 }
 
 export function getNativePath() {
-  return nativePath || meta.nativePath || null;
+  if (!meta.name) return null;
+  if (meta.dirName) return `${meta.dirName}/${meta.name}`;
+  return meta.name;
 }
 
 export function getStorageMode() {
-  return meta.mode;
+  return fileHandle ? "file" : (trades ? "memory" : null);
+}
+
+export function getDirName() {
+  return meta.dirName || dirHandle?.name || null;
 }
 
 export function isFsSupported() {
-  return isNativeDesktop() || supportsFsAccess();
+  return supportsFsAccess();
 }
 
-export async function loadBundledDefaultJournal() {
-  await waitForNativeApi();
-
-  if (isNativeDesktop() && typeof window.pywebview.api.journal_path === "function") {
-    const path = await window.pywebview.api.journal_path(BUNDLED_JOURNAL_FILE);
-    const exists = await window.pywebview.api.file_exists(path);
-    if (exists) {
-      const b64 = await window.pywebview.api.read_file(path);
-      if (b64) {
-        openFromCsvText(base64ToText(b64));
-        fileHandle = null;
-        nativePath = path;
-        meta = { name: BUNDLED_JOURNAL_FILE, mode: "file", nativePath: path };
-        await idbDelete(STORE_HANDLES, HANDLE_KEY);
-        await saveIdbSnapshot();
-        return { name: meta.name, mode: "file", tradeCount: listTrades().length, bundled: true };
-      }
-    }
-  }
-
-  const res = await fetch(`./${BUNDLED_JOURNAL_URL}`, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(`Default journal not found (${BUNDLED_JOURNAL_URL}).`);
-  }
-  openFromCsvText(await res.text());
+export async function clearJournalMapping() {
   fileHandle = null;
-  nativePath = null;
-  meta = { name: BUNDLED_JOURNAL_FILE, mode: "idb" };
-  await idbDelete(STORE_HANDLES, HANDLE_KEY);
-  await saveIdbSnapshot();
-  return { name: meta.name, mode: "idb", tradeCount: listTrades().length, bundled: true };
+  dirHandle = null;
+  trades = null;
+  nextId = 1;
+  meta = { name: null, dirName: null, mode: "file" };
+  await idbDelete(FILE_KEY);
+  await idbDelete(DIR_KEY);
+  await idbDelete(META_KEY);
 }
 
+/**
+ * Sticky restore: reopen the mapped CSV if permission is still granted.
+ * Does not keep trade data in the browser — only the folder/file mapping.
+ */
 export async function tryRestoreLastDb() {
-  await waitForNativeApi();
-
-  let needsFileReauth = false;
-  const savedMetaEarly = await idbGet(STORE_DATA, META_KEY);
-  const prefEarly = getLastDbPreference();
-  const pathHint = savedMetaEarly?.nativePath || prefEarly?.nativePath || null;
-  if (pathHint && isNativeDesktop()) {
-    try {
-      const exists = await window.pywebview.api.file_exists(pathHint);
-      if (exists) {
-        const b64 = await window.pywebview.api.read_file(pathHint);
-        if (b64) {
-          openFromCsvText(base64ToText(b64));
-          nativePath = pathHint;
-          fileHandle = null;
-          meta = {
-            name: fileNameFromPath(pathHint),
-            mode: "file",
-            nativePath: pathHint,
-          };
-          await saveIdbSnapshot();
-          return { ok: true, name: meta.name, mode: "file", default: true };
-        }
-      }
-    } catch {
-      /* fall through */
-    }
+  if (!supportsFsAccess()) {
+    return { ok: false, reason: "unsupported" };
   }
 
-  if (supportsFsAccess()) {
-    const handle = await idbGet(STORE_HANDLES, HANDLE_KEY);
-    if (handle) {
-      const allowed = await ensurePermission(handle, "readwrite");
-      if (allowed) {
-        try {
-          const file = await handle.getFile();
-          openFromCsvText(await file.text());
-          fileHandle = handle;
-          nativePath = null;
-          meta = { name: handle.name, mode: "file" };
-          await saveIdbSnapshot();
-          return { ok: true, name: handle.name, mode: "file", default: true };
-        } catch {
-          /* fall through */
-        }
-      } else {
-        needsFileReauth = true;
-      }
-    }
+  const savedFile = await idbGet(FILE_KEY);
+  const savedDir = await idbGet(DIR_KEY);
+  const savedMeta = await idbGet(META_KEY);
+
+  if (!savedFile) {
+    return { ok: false, reason: "none", preference: savedMeta || null };
   }
 
-  const text = await idbGet(STORE_DATA, TEXT_KEY);
-  const savedMeta = await idbGet(STORE_DATA, META_KEY);
-  const pref = getLastDbPreference();
-  if (typeof text === "string" && text.length) {
-    openFromCsvText(text);
-    meta = savedMeta || {
-      name: pref?.name || BUNDLED_JOURNAL_FILE,
-      mode: "idb",
-    };
-    fileHandle = null;
-    nativePath = meta.nativePath || null;
-    rememberLastDbPreference();
+  const allowed = await ensurePermission(savedFile, "readwrite");
+  if (!allowed) {
     return {
-      ok: true,
-      name: meta.name,
-      mode: meta.mode || "idb",
-      default: true,
-      needsFileReauth,
+      ok: false,
+      reason: "permission",
+      needsFileReauth: true,
+      preference: savedMeta || { name: savedFile.name },
     };
   }
 
   try {
-    const bundled = await loadBundledDefaultJournal();
+    const file = await savedFile.getFile();
+    openFromCsvText(await file.text());
+    fileHandle = savedFile;
+    dirHandle = null;
+    if (savedDir) {
+      const dirOk = await ensurePermission(savedDir, "readwrite");
+      if (dirOk) dirHandle = savedDir;
+    }
+    meta = {
+      name: savedFile.name,
+      dirName: dirHandle?.name || savedMeta?.dirName || null,
+      mode: "file",
+    };
+    await persistMapping();
     return {
       ok: true,
-      name: bundled.name,
-      mode: bundled.mode || "idb",
+      name: meta.name,
+      mode: "file",
+      dirName: meta.dirName,
       default: true,
-      bundled: true,
-      tradeCount: bundled.tradeCount,
     };
   } catch (err) {
-    return { ok: false, reason: "none", preference: pref, error: err };
+    return {
+      ok: false,
+      reason: "unreadable",
+      error: err,
+      preference: savedMeta || { name: savedFile.name },
+    };
   }
 }
 
-export async function newDatabase({ suggestedName = "My Trading Journal.csv" } = {}) {
-  await waitForNativeApi();
-
-  let fileName = (suggestedName || "My Trading Journal.csv").trim();
-  if (!fileName) fileName = "My Trading Journal.csv";
-  fileName = fileName.split(/[/\\]/).pop() || "My Trading Journal.csv";
-  if (!/\.csv$/i.test(fileName)) {
-    fileName = fileName.replace(/\.(sqlite|db|sqlite3)$/i, "");
-    fileName = `${fileName}.csv`;
-  }
-
-  if (isNativeDesktop() && typeof window.pywebview.api.create_journal === "function") {
-    const path = await window.pywebview.api.create_journal(fileName);
-    if (!path) throw new Error("Could not create journal path.");
-    const exists = await window.pywebview.api.file_exists(path);
-    if (exists) {
-      const overwrite = window.confirm(
-        `“${fileNameFromPath(path)}” already exists in the journals folder.\n\nOverwrite it with a blank journal?`,
-      );
-      if (!overwrite) {
-        const err = new Error("Save cancelled");
-        err.name = "AbortError";
-        throw err;
-      }
-    }
-    createEmptyJournal();
-    fileHandle = null;
-    nativePath = path;
-    meta = { name: fileNameFromPath(path), mode: "file", nativePath: path };
-    await window.pywebview.api.write_file(path, textToBase64(currentCsvText()));
-    await idbDelete(STORE_HANDLES, HANDLE_KEY);
-    await saveIdbSnapshot();
-    return { name: meta.name, mode: "file", path };
-  }
-
-  createEmptyJournal();
-  fileHandle = null;
-  nativePath = null;
-  meta = { name: fileName, mode: "idb" };
-  await idbDelete(STORE_HANDLES, HANDLE_KEY);
-  await saveIdbSnapshot();
-  exportDownload(fileName);
-  return { name: fileName, mode: "idb", downloaded: true };
-}
-
+/**
+ * Map a local folder + an existing CSV inside the user's workflow.
+ * 1) Choose journal folder  2) Choose CSV file
+ */
 export async function openDatabaseWithFs() {
-  await waitForNativeApi();
+  requireFs();
 
-  if (isNativeDesktop() && typeof window.pywebview.api.link_journal === "function") {
-    let result;
-    try {
-      result = await window.pywebview.api.link_journal();
-    } catch (err) {
-      throw new Error(err?.message || String(err) || "Could not link journal.");
-    }
-    if (!result || !result.path) {
-      const err = new Error("Open cancelled");
-      err.name = "AbortError";
-      throw err;
-    }
-    const b64 = await window.pywebview.api.read_file(result.path);
-    if (!b64) throw new Error("Could not read the selected journal file.");
-    openFromCsvText(base64ToText(b64));
-    fileHandle = null;
-    nativePath = result.path;
-    meta = { name: result.name || fileNameFromPath(result.path), mode: "file", nativePath: result.path };
-    await idbDelete(STORE_HANDLES, HANDLE_KEY);
-    await saveIdbSnapshot();
-    return {
-      name: meta.name,
-      mode: "file",
-      tradeCount: result.tradeCount ?? result.trade_count ?? listTrades().length,
-      source: result.source || result.excel_name || null,
-      imported: !!result.imported,
-    };
-  }
+  const nextDir = await pickDirectory();
+  const nextFile = await pickCsvFile();
 
-  if (isNativeDesktop() && typeof window.pywebview.api.import_excel_journal === "function") {
-    let result;
-    try {
-      result = await window.pywebview.api.import_excel_journal();
-    } catch (err) {
-      throw new Error(err?.message || String(err) || "Excel import failed.");
-    }
-    if (!result || !result.path) {
-      const err = new Error("Open cancelled");
-      err.name = "AbortError";
-      throw err;
-    }
-    const b64 = await window.pywebview.api.read_file(result.path);
-    if (!b64) throw new Error("Could not read the imported journal file.");
-    openFromCsvText(base64ToText(b64));
-    fileHandle = null;
-    nativePath = result.path;
-    meta = { name: result.name || fileNameFromPath(result.path), mode: "file", nativePath: result.path };
-    await idbDelete(STORE_HANDLES, HANDLE_KEY);
-    await saveIdbSnapshot();
-    return {
-      name: meta.name,
-      mode: "file",
-      tradeCount: result.tradeCount ?? result.trade_count ?? listTrades().length,
-      source: result.source || result.excel_name || null,
-      imported: true,
-    };
-  }
-
-  if (isNativeDesktop()) {
-    const path = await window.pywebview.api.open_file();
-    if (!path) {
-      const err = new Error("Open cancelled");
-      err.name = "AbortError";
-      throw err;
-    }
-    const b64 = await window.pywebview.api.read_file(path);
-    if (!b64) throw new Error("Could not read the selected journal file.");
-    openFromCsvText(base64ToText(b64));
-    fileHandle = null;
-    nativePath = path;
-    meta = { name: fileNameFromPath(path), mode: "file", nativePath: path };
-    await idbDelete(STORE_HANDLES, HANDLE_KEY);
-    await saveIdbSnapshot();
-    return { name: meta.name, mode: "file" };
-  }
-
-  if (!supportsFsAccess()) {
-    throw new Error("USE_FILE_INPUT");
-  }
-  const [handle] = await window.showOpenFilePicker({
-    multiple: false,
-    types: [{
-      description: "Trading journal (CSV)",
-      accept: { "text/csv": [".csv"], "text/plain": [".csv"] },
-    }],
-  });
-  const allowed = await ensurePermission(handle, "readwrite");
-  if (!allowed) throw new Error("Permission denied to open journal file.");
-  const file = await handle.getFile();
+  const file = await nextFile.getFile();
   openFromCsvText(await file.text());
-  fileHandle = handle;
-  nativePath = null;
-  meta = { name: handle.name, mode: "file" };
-  await idbPut(STORE_HANDLES, HANDLE_KEY, handle);
-  await saveIdbSnapshot();
-  return { name: handle.name, mode: "file" };
+  await bindHandles(nextFile, nextDir);
+
+  return {
+    name: meta.name,
+    mode: "file",
+    dirName: meta.dirName,
+    tradeCount: listTrades().length,
+  };
 }
 
+/**
+ * Create a new CSV in a mapped folder (picks folder first if needed).
+ */
+export async function newDatabase({ suggestedName = "My Trading Journal.csv" } = {}) {
+  requireFs();
+
+  const fileName = normalizeCsvName(suggestedName);
+  let nextDir = dirHandle;
+  if (!nextDir) {
+    nextDir = await pickDirectory();
+  } else {
+    const ok = await ensurePermission(nextDir, "readwrite");
+    if (!ok) nextDir = await pickDirectory();
+  }
+
+  let existing = false;
+  try {
+    await nextDir.getFileHandle(fileName);
+    existing = true;
+  } catch {
+    existing = false;
+  }
+  if (existing) {
+    const overwrite = window.confirm(
+      `“${fileName}” already exists in “${nextDir.name}”.\n\nOverwrite it with a blank journal?`,
+    );
+    if (!overwrite) {
+      const err = new Error("Save cancelled");
+      err.name = "AbortError";
+      throw err;
+    }
+  }
+
+  const nextFile = await nextDir.getFileHandle(fileName, { create: true });
+  createEmptyJournal();
+  await writeTextToHandle(nextFile, currentCsvText());
+  await bindHandles(nextFile, nextDir);
+
+  return {
+    name: meta.name,
+    mode: "file",
+    dirName: meta.dirName,
+    path: getNativePath(),
+  };
+}
+
+/**
+ * Manual redirect: clear sticky mapping, then link folder + CSV again.
+ */
+export async function changeJournalLocation() {
+  await clearJournalMapping();
+  return openDatabaseWithFs();
+}
+
+/**
+ * One-shot CSV import only works if the user then saves via file picker.
+ * Prefer openDatabaseWithFs / newDatabase for normal use.
+ */
 export async function importFromFile(file) {
   if (!file) throw new Error("No file selected.");
+  requireFs();
   openFromCsvText(await file.text());
-  fileHandle = null;
-  nativePath = null;
-  meta = { name: file.name || "imported.csv", mode: "idb" };
-  await idbDelete(STORE_HANDLES, HANDLE_KEY);
-  await saveIdbSnapshot();
-  return { name: meta.name, mode: "idb" };
+
+  const nextDir = await pickDirectory();
+  const fileName = normalizeCsvName(file.name || "imported.csv");
+  const nextFile = await nextDir.getFileHandle(fileName, { create: true });
+  await writeTextToHandle(nextFile, currentCsvText());
+  await bindHandles(nextFile, nextDir);
+
+  return {
+    name: meta.name,
+    mode: "file",
+    dirName: meta.dirName,
+    tradeCount: listTrades().length,
+  };
 }
 
 export function exportDownload(filename) {
@@ -662,22 +550,15 @@ export function exportDownload(filename) {
 
 export async function persist() {
   if (!trades) throw new Error("No journal loaded.");
-  await saveIdbSnapshot();
-  if (nativePath && isNativeDesktop()) {
-    try {
-      await window.pywebview.api.write_file(nativePath, textToBase64(currentCsvText()));
-    } catch {
-      /* IndexedDB still saved */
-    }
-    return;
+  if (!fileHandle || typeof fileHandle.createWritable !== "function") {
+    throw new Error("No local journal file mapped. Link or create a journal first.");
   }
-  if (fileHandle && typeof fileHandle.createWritable === "function") {
-    try {
-      await writeTextToHandle(fileHandle, currentCsvText());
-    } catch {
-      /* IndexedDB still saved */
-    }
+  const allowed = await ensurePermission(fileHandle, "readwrite");
+  if (!allowed) {
+    throw new Error("Permission lost for the journal file. Use Change Journal Location to re-link.");
   }
+  await writeTextToHandle(fileHandle, currentCsvText());
+  await persistMapping();
 }
 
 export function listTrades() {
@@ -739,4 +620,9 @@ export async function deleteTrade(id) {
   if (!trades) throw new Error("No journal loaded.");
   trades = trades.filter((t) => Number(t.id) !== Number(id));
   await persist();
+}
+
+/** @deprecated Bundled default is no longer auto-loaded in the browser app. */
+export async function loadBundledDefaultJournal() {
+  throw new Error("Link a local folder and CSV, or create a new journal.");
 }

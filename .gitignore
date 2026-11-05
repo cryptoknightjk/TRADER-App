@@ -1,22 +1,22 @@
-# Built desktop app (recreate with build_local_exe.py / build_ship.py)
-TRADER_App.exe
-TRADER_App.lnk
-_internal/
-_exe_build/
-_ship_staging/
-
-# Local trade journals (keep on machine only)
+# Personal journals stay local (template may be committed explicitly)
 journals/*.csv
 !journals/.gitkeep
+!journals/CK_Trading Journal Template_July 2026.csv
 
-# Python / OS junk
+# Local / OS junk
 __pycache__/
 *.py[cod]
-*.pyo
-.Python
 .env
 .env.*
 *.log
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Legacy desktop build leftovers (should not reappear)
+TRADER_App.exe
+TRADER_App.lnk
+_internal/
+_exe_build/
+_ship_staging/
+*.bat

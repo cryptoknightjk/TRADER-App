@@ -4,19 +4,21 @@ import {
   tryRestoreLastDb,
   newDatabase,
   openDatabaseWithFs,
+  changeJournalLocation,
   importFromFile,
   hasDb,
   getDbName,
   getNativePath,
+  getDirName,
   getStorageMode,
   insertTrade,
-} from "./db.js?v=plan3";
-import { bindCalculator, readCalculatorForm, compute, validateForLog } from "./calculator.js?v=plan3";
-import { bindJournal, renderJournal } from "./journal.js?v=plan3";
-import { bindRating } from "./rating.js?v=plan3";
-import { bindPerformance, renderPerformance } from "./performance.js?v=plan3";
-import { bindTheme } from "./theme.js?v=plan3";
-import { APP_VERSION } from "./version.js?v=plan3";
+} from "./db.js";
+import { bindCalculator, readCalculatorForm, compute, validateForLog } from "./calculator.js";
+import { bindJournal, renderJournal } from "./journal.js";
+import { bindRating } from "./rating.js";
+import { bindPerformance, renderPerformance } from "./performance.js";
+import { bindTheme } from "./theme.js";
+import { APP_VERSION } from "./version.js";
 
 const toastEl = document.getElementById("toast");
 const fileInput = document.getElementById("fileImport");
@@ -49,17 +51,18 @@ function setDbStatus(name, mode) {
   const el = document.getElementById("dbStatus");
   if (!name) {
     el.textContent = "No journal";
-    el.title = "";
+    el.title = "Link a local folder + CSV, or create a new journal";
     el.style.color = "var(--danger)";
     return;
   }
   const path = getNativePath();
-  const tag = mode === "file" ? "csv" : "browser";
-  el.textContent = `Journal: ${name} (${tag})`;
+  const dir = getDirName();
+  el.textContent = dir ? `Journal: ${name} · ${dir}/` : `Journal: ${name}`;
   el.title = path
-    ? `Pointing to CSV:\n${path}`
-    : "Last opened journal — restored automatically on launch";
+    ? `Mapped local CSV (sticky until you change location):\n${path}`
+    : "Mapped local CSV — sticky until you change location";
   el.style.color = "";
+  void mode;
 }
 
 function refreshStatus() {
@@ -165,11 +168,6 @@ async function onLogTrade() {
   }
 }
 
-function triggerImport() {
-  fileInput.value = "";
-  fileInput.click();
-}
-
 async function boot() {
   await initDbModule();
   bindTheme();
@@ -206,12 +204,16 @@ async function boot() {
 
   document.getElementById("btnNewDb").addEventListener("click", async () => {
     try {
-      if (hasDb() && !confirm("Create a new journal? Your current journal stays on disk; this app will switch to the new one.")) {
+      if (!isFsSupported()) {
+        toast("Use Chrome or Edge, and open via http://localhost (see README).", true);
+        return;
+      }
+      if (hasDb() && !confirm("Create a new journal CSV in your mapped folder? The current file stays on disk; this app will switch to the new one.")) {
         return;
       }
 
       const typed = window.prompt(
-        "Journal name (saved in the app’s journals folder):",
+        "New journal file name (saved in your chosen local folder):",
         "My Trading Journal",
       );
       if (typed === null) return;
@@ -220,7 +222,7 @@ async function boot() {
       const result = await newDatabase({ suggestedName });
       refreshStatus();
       refreshJournal();
-      toast(`Created journal “${result.name}” in journals/ — set as default`);
+      toast(`Created “${result.name}” in folder “${result.dirName || "local"}” — mapping saved`);
     } catch (err) {
       if (err?.name === "AbortError") return;
       toast(err.message || String(err), true);
@@ -229,69 +231,84 @@ async function boot() {
 
   document.getElementById("btnOpenDb").addEventListener("click", async () => {
     try {
-      if (isFsSupported()) {
-        try {
-          const result = await openDatabaseWithFs();
-          refreshStatus();
-          refreshJournal();
-          if (result.imported) {
-            toast(
-              `Imported “${result.source || result.name}” → journals/${result.name}`
-              + (result.tradeCount != null ? ` (${result.tradeCount} trades)` : "")
-              + " — set as default",
-            );
-          } else {
-            const path = getNativePath();
-            toast(
-              path
-                ? `Pointing to CSV “${result.name}”\n${path}`
-                : `Linked journal “${result.name}” — set as default`,
-            );
-          }
-          return;
-        } catch (err) {
-          if (err?.name === "AbortError") return;
-          if (err?.message !== "USE_FILE_INPUT") {
-            toast(err.message || String(err), true);
-            return;
-          }
-        }
+      if (!isFsSupported()) {
+        toast("Use Chrome or Edge, and open via http://localhost (see README).", true);
+        return;
       }
-      triggerImport();
+      const result = await openDatabaseWithFs();
+      refreshStatus();
+      refreshJournal();
+      toast(
+        `Mapped “${result.name}”`
+        + (result.dirName ? ` in “${result.dirName}/”` : "")
+        + (result.tradeCount != null ? ` (${result.tradeCount} trades)` : "")
+        + " — sticky until you change location",
+      );
     } catch (err) {
       if (err?.name === "AbortError") return;
       toast(err.message || String(err), true);
     }
   });
 
-  fileInput.addEventListener("change", async () => {
+  document.getElementById("btnChangeDb")?.addEventListener("click", async () => {
+    try {
+      if (!isFsSupported()) {
+        toast("Use Chrome or Edge, and open via http://localhost (see README).", true);
+        return;
+      }
+      if (!confirm("Change journal location?\n\nYou’ll pick a folder and CSV again. Mapping updates; old files are left untouched.")) {
+        return;
+      }
+      const result = await changeJournalLocation();
+      refreshStatus();
+      refreshJournal();
+      toast(
+        `Redirected to “${result.name}”`
+        + (result.dirName ? ` in “${result.dirName}/”` : "")
+        + " — new sticky mapping",
+      );
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+      toast(err.message || String(err), true);
+    }
+  });
+
+  fileInput?.addEventListener("change", async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
     try {
       const result = await importFromFile(file);
       refreshStatus();
       refreshJournal();
-      toast(`Linked journal “${result.name}” — set as default`);
+      toast(`Saved “${result.name}” into “${result.dirName}/” — mapping saved`);
     } catch (err) {
+      if (err?.name === "AbortError") return;
       toast(err.message || String(err), true);
     }
   });
 
   setMode("calculator");
 
+  if (!isFsSupported()) {
+    setDbStatus(null);
+    toast("Chrome/Edge required. Open this app via Start Web App.bat (localhost), not as a raw file.", true);
+    return;
+  }
+
   const restored = await tryRestoreLastDb();
   if (restored.ok) {
     refreshStatus();
-    if (restored.bundled) {
-      toast(`Linked default journal “${restored.name}” (${restored.tradeCount || 0} trades).`);
-    } else if (restored.needsFileReauth) {
-      toast(`Using last journal “${restored.name}”. Click Link Existing Journal once to re-link the file.`);
-    } else {
-      toast(`Using last journal: ${restored.name}`);
-    }
+    toast(
+      `Reopened mapped journal “${restored.name}”`
+      + (restored.dirName ? ` (${restored.dirName}/)` : ""),
+    );
+  } else if (restored.needsFileReauth || restored.reason === "permission") {
+    setDbStatus(null);
+    const prior = restored.preference?.name ? ` “${restored.preference.name}”` : "";
+    toast(`Browser needs permission again for${prior}. Click Link Existing Journal to re-map.`, true);
   } else {
     setDbStatus(null);
-    toast("No journal yet — click Create New Journal or Link Existing Journal.");
+    toast("No journal mapped yet — Link Existing Journal (folder + CSV) or Create New Journal.");
   }
 }
 
